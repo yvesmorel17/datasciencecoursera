@@ -1,0 +1,153 @@
+---
+title: "Regression Models Course Project"
+output: html_document
+---
+
+Background
+----
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."
+
+Data
+-----
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. The information has been generously provided for use use in this cousera course by the authors, Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. They have allowed the use of their paper “Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human ’13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+Both were downloaded for use in this assignment on September 3, 2015 at 6:50am GMT + 8hours.
+
+
+Choice of the prediction algorithm
+----
+
+```{r setup, echo=FALSE, include=F}
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(scales)
+library(hrbrthemes)
+library(epiDisplay)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
+library(finalfit)
+library(arsenal)
+library(caret)
+library(kernlab)
+library(nnet)
+library(pROC)
+library(rpart)
+library(rpart.plot)
+library(lattice) 
+library(randomForest)
+library(doParallel)
+
+#Data import
+set.seed(3124)
+training_data <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!", ""))
+testing_data <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!", ""))
+
+
+#data cleaning
+training_data <- training_data[, 6:dim(training_data)[2]]
+limite <- dim(training_data)[1] * 0.95
+Nomissing <- !apply(training_data, 2, function(x) sum(is.na(x)) > limite  | sum(x=="") > limite)
+training_data <- training_data[, Nomissing]
+missing <- nearZeroVar(training_data, saveMetrics = TRUE)
+training_data <- training_data[, missing$nzv==FALSE]
+training_data$classe = factor(training_data$classe)
+
+
+Train <- createDataPartition(training_data$classe, p = 0.95)[[1]]
+cross_validation <- training_data[-Train,]
+training_data <- training_data[Train,]
+Train <- createDataPartition(cross_validation$classe, p = 0.95)[[1]]
+cross_validation_test <- cross_validation[ -Train,]
+cross_validation <- cross_validation[Train,]
+
+testing_data <- testing_data[, 6:dim(testing_data)[2]]
+testing_data <- testing_data[, Nomissing]
+testing_data$classe <- NA
+testing_data <- testing_data[, missing$nzv==FALSE]
+```
+
+Modeling: Random Forest and Decision Trees
+------
+```{r, echo=TRUE, message=F, warning=F}
+model1 <-randomForest(classe ~ ., data = training_data, importance = TRUE, ntrees = 10) 
+model2 <- rpart(classe ~ ., data=training_data, method="class")
+```
+
+Training set accuracy
+------
+Then, we estimate the performance of the model on the validation data set.  
+
+```{r, echo=TRUE, message=F, warning=F}
+
+# the results on the training set
+ptraining1 <- predict(model1, training_data)
+print(confusionMatrix(ptraining1, training_data$classe))
+
+ptraining2 <- predict(model2, training_data,type="class")
+print(confusionMatrix(ptraining2, training_data$classe))
+
+```
+
+
+Validation set accuracy (Out-of-Sample)
+-------
+```{r, echo=TRUE, message=F, warning=F}
+
+# the results on the training set
+pvalidation1 <- predict(model1, cross_validation)
+print(confusionMatrix(pvalidation1, cross_validation$classe))
+
+pvalidation2 <- predict(model2, cross_validation,type="class")
+print(confusionMatrix(pvalidation2, cross_validation$classe))
+
+```
+
+
+We could notice that Random Forest is better than Decision Trees. Accuracy for Random Forest model was 0.9989 (95% CI: (0.994, 1)) compared to Decision Tree model with 0.735 (95% CI: (0.7054, 0.7631)). Consequently, we chose the Random Forests model. The out-of-sample error is therefore 0.11%, so our model performs rather good.
+
+
+We stopped the work at random forest choice as the goal to get the required answers and report the errors achieved with the best model has been reached. Actually, the Random Forest method worked very well.The Confusion Matrix achieved 99.89% accuracy.
+
+This model will be used for the final calculations.
+
+We are using finally random forest because they are suitable when to deal with a large number of inputs and the interactions between variables are unknown. In addition, a random forest can handle unscaled variables and categorical variables. 
+
+Test set prediction
+-------
+
+```{r, echo=TRUE, message=F, warning=F}
+ptest <- predict(model1, cross_validation_test)
+ptest
+```
+
+
+
+Prepare the submission. (using COURSERA provided code)
+----
+We then save the output to files according to instructions and post it to the submission page.
+
+```{r, echo=TRUE, message=F, warning=F}
+answers <- as.vector(ptest)
+
+pml_write_files = function(x) {
+    n = length(x)
+    for (i in 1:n) {
+        filename = paste0("problem_id_", i, ".txt")
+        write.table(x[i], file = filename, quote = FALSE, row.names = FALSE, 
+            col.names = FALSE)
+    }
+}
+
+pml_write_files(answers)
+```
